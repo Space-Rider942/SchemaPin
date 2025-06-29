@@ -16,6 +16,20 @@ class KeyManager:
     """Manages ECDSA P-256 key generation and serialization."""
 
     @staticmethod
+    def _assert_private_key_type(private_key):
+        if not isinstance(private_key, EllipticCurvePrivateKey):
+            raise TypeError("private_key must be an EllipticCurvePrivateKey instance")
+        if not isinstance(private_key.curve, ec.SECP256R1):
+            raise ValueError("private_key must use curve SECP256R1 (P-256)")
+
+    @staticmethod
+    def _assert_public_key_type(public_key):
+        if not isinstance(public_key, EllipticCurvePublicKey):
+            raise TypeError("public_key must be an EllipticCurvePublicKey instance")
+        if not isinstance(public_key.curve, ec.SECP256R1):
+            raise ValueError("public_key must use curve SECP256R1 (P-256)")
+
+    @staticmethod
     def generate_keypair() -> Tuple[EllipticCurvePrivateKey, EllipticCurvePublicKey]:
         """
         Generate new ECDSA P-256 key pair.
@@ -38,6 +52,7 @@ class KeyManager:
         Returns:
             PEM-encoded private key string
         """
+        KeyManager._assert_private_key_type(private_key)
         pem_bytes = private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PrivateFormat.PKCS8,
@@ -56,6 +71,7 @@ class KeyManager:
         Returns:
             PEM-encoded public key string
         """
+        KeyManager._assert_public_key_type(public_key)
         pem_bytes = public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
@@ -73,10 +89,17 @@ class KeyManager:
         Returns:
             ECDSA private key
         """
-        return serialization.load_pem_private_key(
+        if not isinstance(pem_data, str):
+            raise TypeError("pem_data must be a string")
+        key = serialization.load_pem_private_key(
             pem_data.encode('utf-8'),
             password=None
         )
+        # Ensure the loaded key is actually an EllipticCurvePrivateKey
+        if not isinstance(key, EllipticCurvePrivateKey):
+            raise TypeError("Loaded key is not an EllipticCurvePrivateKey")
+        KeyManager._assert_private_key_type(key)
+        return key
 
     @staticmethod
     def load_public_key_pem(pem_data: str) -> EllipticCurvePublicKey:
@@ -89,7 +112,13 @@ class KeyManager:
         Returns:
             ECDSA public key
         """
-        return serialization.load_pem_public_key(pem_data.encode('utf-8'))
+        if not isinstance(pem_data, str):
+            raise TypeError("pem_data must be a string")
+        key = serialization.load_pem_public_key(pem_data.encode('utf-8'))
+        if not isinstance(key, EllipticCurvePublicKey):
+            raise TypeError("Loaded key is not an EllipticCurvePublicKey")
+        KeyManager._assert_public_key_type(key)
+        return key
 
     @staticmethod
     def calculate_key_fingerprint(public_key: EllipticCurvePublicKey) -> str:
@@ -102,6 +131,7 @@ class KeyManager:
         Returns:
             SHA-256 fingerprint in format 'sha256:hexstring'
         """
+        KeyManager._assert_public_key_type(public_key)
         der_bytes = public_key.public_bytes(
             encoding=serialization.Encoding.DER,
             format=serialization.PublicFormat.SubjectPublicKeyInfo
@@ -139,6 +169,9 @@ class SignatureManager:
         Returns:
             Base64-encoded signature
         """
+        if not isinstance(hash_bytes, bytes):
+            raise TypeError("hash_bytes must be bytes")
+        KeyManager._assert_private_key_type(private_key)
         signature = private_key.sign(hash_bytes, ec.ECDSA(hashes.SHA256()))
         return base64.b64encode(signature).decode('ascii')
 
@@ -155,6 +188,11 @@ class SignatureManager:
         Returns:
             True if signature is valid, False otherwise
         """
+        if not isinstance(hash_bytes, bytes):
+            raise TypeError("hash_bytes must be bytes")
+        if not isinstance(signature_b64, str):
+            raise TypeError("signature_b64 must be a string")
+        KeyManager._assert_public_key_type(public_key)
         try:
             signature = base64.b64decode(signature_b64)
             public_key.verify(signature, hash_bytes, ec.ECDSA(hashes.SHA256()))
